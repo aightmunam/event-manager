@@ -3,38 +3,6 @@ from pynamodb.attributes import UnicodeAttribute, UTCDateTimeAttribute, NumberAt
 from pynamodb.indexes import GlobalSecondaryIndex, AllProjection
 
 
-class EventsManager(Model):
-    class Meta:
-        table_name = 'EventsManager'
-
-    # common attributes
-    PK = UnicodeAttribute(hash_key=True)
-    SK = UnicodeAttribute(range_key=True)
-    Type = UnicodeAttribute()
-
-    created_by = UnicodeAttribute()
-
-    # event attributes below
-    title = UnicodeAttribute()
-    description = UnicodeAttribute()
-    date = UTCDateTimeAttribute()
-    city = UnicodeAttribute()
-    zip_code = NumberAttribute()
-
-    # user attributes below
-    email = UnicodeAttribute()
-    profile_picture = UnicodeAttribute()
-
-    # index attributes below
-    GSI1 = GSI1()
-    GSI1PK = UnicodeAttribute()
-    GSI1SK = UnicodeAttribute()
-
-    GSI2 = GSI2()
-    GSI2PK = UnicodeAttribute()
-    GSI2SK = UnicodeAttribute()
-
-
 class GSI1(GlobalSecondaryIndex):
     class Meta:
 
@@ -57,3 +25,55 @@ class GSI2(GlobalSecondaryIndex):
 
     GSI2PK = UnicodeAttribute(hash_key=True)
     GSI2SK = UnicodeAttribute(range_key=True)
+
+
+class BaseEventManagerModel(Model):
+    class Meta:
+        table_name = 'EventsManager'
+        host = 'http://localhost:8000'
+
+    PK = UnicodeAttribute(hash_key=True)
+    SK = UnicodeAttribute(range_key=True)
+    entity_type = UnicodeAttribute()
+
+    def to_dict(self):
+        rval = {}
+        for key in self.attribute_values:
+            rval[key] = self.__getattribute__(key)
+        return rval
+
+    @classmethod
+    def prepare_key(cls, key):
+        raise NotImplementedError()
+
+    # GSI1 = GSI1()
+    # GSI1PK = UnicodeAttribute()
+    # GSI1SK = UnicodeAttribute()
+
+    # GSI2 = GSI2()
+    # GSI2PK = UnicodeAttribute()
+    # GSI2SK = UnicodeAttribute()
+
+
+class Event(BaseEventManagerModel):
+    title = UnicodeAttribute()
+    description = UnicodeAttribute()
+    date = UTCDateTimeAttribute()
+    city = UnicodeAttribute()
+    zip_code = NumberAttribute()
+    created_by = UnicodeAttribute()
+
+
+class User(BaseEventManagerModel):
+    email = UnicodeAttribute()
+    password = UnicodeAttribute()
+    first_name = UnicodeAttribute(null=True)
+    last_name = UnicodeAttribute(null=True)
+
+    @classmethod
+    def prepare_key(cls, key):
+        return f"USER#{key}"
+
+
+class Registration(BaseEventManagerModel):
+    created_by = UnicodeAttribute()

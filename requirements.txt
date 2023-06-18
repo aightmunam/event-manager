@@ -13,3 +13,5 @@ typing_extensions==4.6.3
 urllib3==1.26.16
 wcwidth==0.2.6
 pynamodb==5.5.0
+marshmallow==3.19.0
+python-ulid==1.1.0
