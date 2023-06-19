@@ -1,7 +1,7 @@
 from chalice import Chalice, BadRequestError, NotFoundError, Response
-from schemas import UserSchema
+from schemas import UserSchema, EventSchema
 from marshmallow import ValidationError
-from models import User
+from models import User, Event
 
 
 app = Chalice(app_name='events-manager')
@@ -41,7 +41,7 @@ def update_user(pk):
     full_key: str = User.prepare_key(pk)
     try:
         user: User = User.get(full_key, full_key)
-        user: dict = UserSchema().load({**request.json_body, "PK": user.PK, "SK": user.SK})
+        user: dict = UserSchema(context={"instance": user}).load({**request.json_body})
         return Response(
             body=user,
             status_code=200,
@@ -59,7 +59,7 @@ def delete_user(pk):
     full_key: str = User.prepare_key(pk)
     try:
         user: User = User.get(full_key, full_key)
-        user.delete()
+        User.delete_user(user)
         return Response(
             body=UserSchema().dump(user),
             status_code=200,
@@ -69,21 +69,27 @@ def delete_user(pk):
         raise NotFoundError("User not found")
 
 
-@app.route('/events/', methods=['POST'])
+@app.route('/events', methods=['POST'])
 def create_event():
-    pass
+    request = app.current_request
+    try:
+        result: dict = EventSchema().load(request.json_body)
+        return Response(
+            body=result,
+            status_code=200,
+            headers={'Content-Type': 'text/json'}
+        )
+    except ValidationError as err:
+        raise BadRequestError(err.messages_dict)
 
 
-# @app.route('/events/{id}/', methods=['PUT'])
-# def update_event():
-#     pass
-
-
-# @app.route('/events/{id}/', methods=['GET'])
-# def get_event():
-#     pass
-
-
-# @app.route('/events/{id}/', methods=['DELETE'])
-# def delete_event():
-#     pass
+@app.route('/users/{id}/events', methods=['GET'])
+def get_events_by_user(id):
+    full_key = User.prepare_key(id)
+    events = Event.gsi1.query(full_key, Event.gsi1SK.startswith("EVENT#"))
+    print(events)
+    return Response(
+        body=EventSchema().dump(events, many=True),
+        status_code=200,
+        headers={'Content-Type': 'text/json'}
+    )
