@@ -127,4 +127,14 @@ class Email(BaseEventManagerModel):
 
 
 class Registration(BaseEventManagerModel):
-    created_by = UnicodeAttribute()
+    user = UnicodeAttribute()
+    event = UnicodeAttribute()
+    registration_time = UTCDateTimeAttribute()
+
+    gsi1 = GSI1()
+    gsi1PK = UnicodeAttribute()
+    gsi1SK = UnicodeAttribute()
+
+    @classmethod
+    def prepare_key(cls, key):
+        return f"REGISTRATION#{key}"
