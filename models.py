@@ -1,12 +1,13 @@
-from pynamodb.models import Model
-from pynamodb.attributes import UnicodeAttribute, UTCDateTimeAttribute, NumberAttribute
-from pynamodb.indexes import GlobalSecondaryIndex, AllProjection
-from pynamodb.connection import Connection
-from pynamodb.transactions import TransactWrite
-from pynamodb.exceptions import TransactWriteError
-from marshmallow import ValidationError
+import os
 from time import time
 
+from marshmallow import ValidationError
+from pynamodb.attributes import UnicodeAttribute, UTCDateTimeAttribute
+from pynamodb.connection import Connection
+from pynamodb.exceptions import TransactWriteError
+from pynamodb.indexes import AllProjection, GlobalSecondaryIndex
+from pynamodb.models import Model
+from pynamodb.transactions import TransactWrite
 
 
 class GSI1(GlobalSecondaryIndex):
@@ -35,12 +36,13 @@ class GSI2(GlobalSecondaryIndex):
 
 class BaseEventManagerModel(Model):
     class Meta:
-        table_name = "EventsManager"
-        host = "http://localhost:8000"
+        table_name = os.getenv("APP_TABLE_NAME", "undefined")
+        host = os.getenv("DYNAMODB_HOST", "undefined")
 
     PK = UnicodeAttribute(hash_key=True)
     SK = UnicodeAttribute(range_key=True)
     entity_type = UnicodeAttribute()
+    ID = UnicodeAttribute(null=True)
 
     def to_dict(self):
         rval = {}
@@ -58,7 +60,7 @@ class Event(BaseEventManagerModel):
     description = UnicodeAttribute()
     date = UTCDateTimeAttribute()
     city = UnicodeAttribute()
-    zip_code = NumberAttribute()
+    zip_code = UnicodeAttribute()
     created_by = UnicodeAttribute()
 
     gsi1 = GSI1()
@@ -87,39 +89,69 @@ class User(BaseEventManagerModel):
     @classmethod
     def put_user(cls, user, old_user):
         new_email_key: str = Email.prepare_key(user.email)
-        new_email: Email = Email(PK=new_email_key, SK=new_email_key, entity_type="Email")
+        new_email: Email = Email(
+            PK=new_email_key,
+            SK=new_email_key,
+            entity_type="Email",
+            user=user.ID
+        )
 
-        connection: Connection = Connection(host="http://localhost:8000")
+        connection: Connection = Connection(
+            host=os.getenv("DYNAMODB_HOST", "undefined")
+        )
         try:
-            with TransactWrite(connection=connection, client_request_token=str(time())) as transaction:
+            with TransactWrite(
+                connection=connection,
+                client_request_token=str(time())
+            ) as transaction:
                 transaction.save(user)
                 if old_user:
                     if old_user.email != user.email:
                         old_email_key: str = Email.prepare_key(old_user.email)
-                        transaction.delete(Email.get(old_email_key, old_email_key))
-                        transaction.save(new_email, condition=Email.PK.does_not_exist())
+                        transaction.delete(
+                            Email.get(old_email_key, old_email_key)
+                        )
+                        transaction.save(
+                            new_email, condition=Email.PK.does_not_exist()
+                        )
                 else:
-                    transaction.save(new_email, condition=Email.PK.does_not_exist())
+                    transaction.save(
+                        new_email, condition=Email.PK.does_not_exist()
+                    )
         except TransactWriteError as err:
-            if err.cancellation_reasons[0]:
-                raise ValidationError("Something went wrong. Please try again.")
-            if err.cancellation_reasons[1] or err.cancellation_reasons[2]:
-                raise ValidationError({"email": "Email already belongs to another user."})
+            if (
+                err.cancellation_reasons and (
+                    err.cancellation_reasons[1]
+                    or err.cancellation_reasons[2]
+                )
+            ):
+                raise ValidationError(
+                    {"email": "Email already belongs to another user."}
+                )
+            else:
+                raise ValidationError(
+                    "Something went wrong. Please try again."
+                )
 
     @classmethod
     def delete_user(cls, user):
-        connection: Connection = Connection(host="http://localhost:8000")
+        connection: Connection = Connection(
+            host=os.getenv("DYNAMODB_HOST", "undefined")
+        )
         try:
-            with TransactWrite(connection=connection, client_request_token=str(time())) as transaction:
+            with TransactWrite(
+                connection=connection,
+                client_request_token=str(time())
+            ) as transaction:
                 email_key = Email.prepare_key(user.email)
                 transaction.delete(Email.get(email_key, email_key))
                 transaction.delete(user)
-        except TransactWriteError as err:
+        except TransactWriteError:
             raise ValidationError("Something went wrong. Please try again.")
 
 
-
 class Email(BaseEventManagerModel):
+    user = UnicodeAttribute()
 
     @classmethod
     def prepare_key(cls, key):
